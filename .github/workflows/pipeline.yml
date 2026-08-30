@@ -1,6 +1,10 @@
-name: Test Google Cloud Authentication
+name: Build Test Push and Deploy
 
 on:
+  push:
+    branches:
+      - main
+
   workflow_dispatch:
 
 permissions:
@@ -8,7 +12,7 @@ permissions:
   id-token: write
 
 jobs:
-  authenticate:
+  build-test-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,5 +28,50 @@ jobs:
       - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Verify authentication
-        run: gcloud auth list
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker ${{ vars.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPOSITORY }}/${{ vars.IMAGE_NAME }}:${{ github.sha }} \
+            .
+
+      - name: Start container
+        run: |
+          docker run -d \
+            -p 8080:80 \
+            --name html-container \
+            ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPOSITORY }}/${{ vars.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Test website
+        run: |
+          curl --fail --retry 5 --retry-delay 2 http://localhost:8080/
+
+      - name: Stop container
+        if: always()
+        run: |
+          docker rm -f html-container || true
+
+      - name: Push image to Artifact Registry
+        run: |
+          docker push \
+            ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPOSITORY }}/${{ vars.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ vars.IMAGE_NAME }} \
+            --image=${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPOSITORY }}/${{ vars.IMAGE_NAME }}:${{ github.sha }} \
+            --project=${{ vars.PROJECT_ID }} \
+            --region=${{ vars.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --quiet
+
+      - name: Display Cloud Run URL
+        run: |
+          gcloud run services describe ${{ vars.IMAGE_NAME }} \
+            --project=${{ vars.PROJECT_ID }} \
+            --region=${{ vars.REGION }} \
+            --format="value(status.url)"
