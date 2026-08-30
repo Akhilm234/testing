@@ -43,7 +43,7 @@ jobs:
         run: docker load -i my-image.tar
 
       - name: run image
-        run: docker run -p 8080:80 --name my-cont my-image:0.1
+        run: docker run -d -p 8080:80 --name my-cont my-image:0.1
 
       - name: test application
         run: |
@@ -52,4 +52,4 @@ jobs:
 
       - name: stop container
         if: always()
-        run: docker rm my-const
+        run: docker rm -f my-cont
