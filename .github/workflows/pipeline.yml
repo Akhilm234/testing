@@ -45,9 +45,16 @@ jobs:
             --name html-container \
             ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPOSITORY }}/${{ vars.IMAGE_NAME }}:${{ github.sha }}
 
+      - name: Debug container
+        run: |
+          sleep 5
+          docker ps -a
+          docker logs html-container
+          docker inspect html-container --format='Status={{.State.Status}} ExitCode={{.State.ExitCode}}'
+
       - name: Test website
         run: |
-          curl --fail --retry 5 --retry-delay 2 http://localhost:8080/
+          curl --fail --retry 5 --retry-delay 2 http://127.0.0.1:8080/main.html
 
       - name: Stop container
         if: always()
